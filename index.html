@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cognify Grid Lock (Fixed Hitbox)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
+    <style>
+        /* --- 1. CORE & RESET --- */
+        :root {
+            --primary: #0ea5e9;
+            --bg-body: #f1f5f9;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            
+            /* Game Board Colors */
+            --game-container-bg: #115e59; /* Dark Teal */
+            --grid-slot-bg: rgba(0,0,0,0.3);
+            --block-color: #60a5fa; /* Light Blue */
+            --block-user: #d946ef; /* Magenta */
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Outfit', sans-serif; user-select: none; -webkit-user-select: none; }
+
+        body {
+            background: var(--bg-body);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        /* --- 2. HEADER --- */
+        .header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 16px 40px; background: #fff; border-bottom: 1px solid #e2e8f0; z-index: 100;
+        }
+
+        .brand-area { display: flex; align-items: center; gap: 16px; }
+        .logo-box {
+            width: 35px; height: 35px; background: var(--primary); color: white;
+            border-radius: 8px; display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 20px;
+        }
+        .brand-text { font-weight: 700; color: var(--text-main); font-size: 18px; }
+        
+        .context-chips { display: flex; gap: 12px; align-items: center; }
+        .chip {
+            background: #f1f5f9; color: var(--primary); padding: 8px 16px;
+            border-radius: 100px; font-size: 16px; font-weight: 700;
+            display: flex; align-items: center; gap: 8px;
+        }
+
+        /* --- 3. MAIN LAYOUT --- */
+        .main-content {
+            flex: 1; position: relative; display: flex;
+            justify-content: center; align-items: center; width: 100%;
+        }
+
+        .screen { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; }
+        .screen.active { display: flex; }
+
+        .card {
+            background: white; border-radius: 24px; padding: 50px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.05); text-align: center;
+            max-width: 500px; z-index: 50;
+        }
+        .primary-btn {
+            background: var(--primary); color: white; padding: 16px 40px;
+            border-radius: 100px; font-weight: 700; border: none; cursor: pointer;
+            margin-top: 20px; transition: transform 0.2s;
+        }
+        .primary-btn:hover { transform: scale(1.05); }
+
+        /* --- 4. GAME BOARD --- */
+        .game-board {
+            width: 500px; height: 500px;
+            background: var(--game-container-bg);
+            border-radius: 12px;
+            box-shadow: 0 20px 50px rgba(17, 94, 89, 0.2);
+            display: flex; justify-content: center; align-items: center;
+            position: relative; z-index: 10; 
+        }
+
+        .grid-container {
+            display: grid; 
+            grid-template-columns: repeat(3, 1fr);
+            gap: 4px; 
+            padding: 10px;
+        }
+
+        .cell {
+            width: 80px; height: 80px;
+            background: var(--grid-slot-bg); border-radius: 4px;
+        }
+
+        .cell.filled { background: var(--block-color); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.2); }
+        .cell.target {
+            background: rgba(0,0,0,0.5); box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .cell.highlight { background: rgba(255, 255, 255, 0.2); }
+
+        /* --- 5. FALLING PIECE --- */
+        .piece-wrapper {
+            position: absolute; 
+            top: 0; left: 0; 
+            z-index: 1000; 
+            cursor: grab;
+            display: grid; 
+            gap: 4px;      
+            padding: 0;    
+        }
+        .piece-wrapper:active { cursor: grabbing; transform: scale(1.05); }
+
+        .p-block {
+            width: 80px; height: 80px; background: var(--block-user);
+            border-radius: 4px; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+        .p-block.empty { 
+            background: transparent; 
+            box-shadow: none; 
+            pointer-events: none; 
+        }
+
+        .float-instructions {
+            position: absolute; bottom: 30px; color: #94a3b8; font-size: 14px;
+            text-align: center; width: 100%; pointer-events: none;
+        }
+
+        /* Difficulty Colors */
+        .diff-easy { color: #10b981; background: #ecfdf5; }
+        .diff-med { color: #f59e0b; background: #fffbeb; }
+        .diff-hard { color: #f43f5e; background: #fff1f2; }
+
+    </style>
+</head>
+<body>
+
+    <header class="header">
+        <div class="brand-area">
+            <div class="logo-box">C</div>
+            <div class="brand-text">Cognify Grid Lock</div>
+        </div>
+        <div class="context-chips">
+            <div class="chip" id="timer-chip">06:00</div>
+            <div class="chip" id="score-chip">Score: 0</div>
+            <div class="chip diff-easy" id="diff-chip">Level: Easy</div>
+        </div>
+    </header>
+
+    <main class="main-content" id="main-area">
+        
+        <div id="screen-home" class="screen active">
+            <div class="card">
+                <h1>Grid Lock Assessment</h1>
+                <p style="margin: 20px 0; color: #64748b;">
+                    <strong>Instructions:</strong><br><br>
+                    1. Blocks drop from the <strong>Left</strong> side.<br>
+                    2. Drag them into the target hole.<br>
+                    3. <strong>Double Click</strong> to rotate (Medium/Hard).<br>
+                    4. Missed blocks reset the round.
+                </p>
+                <button class="primary-btn" onclick="game.start()">Start Assessment</button>
+            </div>
+        </div>
+
+        <div id="screen-game" class="screen" style="display: none;">
+            <div class="game-board" id="board">
+                <div id="grid" class="grid-container"></div>
+            </div>
+            <div id="falling-piece" class="piece-wrapper"></div>
+            <div class="float-instructions">Drag block from Left • Double Click to Rotate</div>
+        </div>
+
+        <div id="screen-result" class="screen" style="display: none;">
+            <div class="card">
+                <h1>Assessment Complete</h1>
+                <h2 style="font-size: 60px; color: var(--primary); margin: 20px 0;" id="final-score">0</h2>
+                <div style="margin-bottom: 20px; color: #64748b;" id="final-rating">Performance: Calculating...</div>
+                <button class="primary-btn" onclick="location.reload()">Retry</button>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const game = {
+            config: {
+                duration: 360,
+                gridSize: 3,
+                baseSpeed: 0.8, 
+                cellSize: 84 // 80px block + 4px gap logic
+            },
+            state: {
+                score: 0,
+                time: 360,
+                speed: 0.8,
+                difficulty: 'Easy',
+                timerId: null,
+                loopId: null,
+                isPlaying: false,
+                grid: [],
+                piece: { shape: [], x: 0, y: -300, isDragging: false, dragOffset: {x:0, y:0} }
+            },
+            refs: {
+                piece: document.getElementById('falling-piece'),
+                grid: document.getElementById('grid'),
+                board: document.getElementById('board'),
+                diffChip: document.getElementById('diff-chip'),
+                main: document.getElementById('main-area')
+            },
+            shapes: [
+                [[1, 1], [1, 1]], [[1, 1, 1]], [[1, 1, 0], [0, 1, 1]], 
+                [[0, 1, 1], [1, 1, 0]], [[1, 1, 1], [0, 1, 0]], 
+                [[1, 1, 1], [1, 0, 0]], [[1, 1, 1], [0, 0, 1]]
+            ],
+
+            start() {
+                this.state.isPlaying = true;
+                this.state.score = 0;
+                this.state.time = this.config.duration;
+                
+                document.getElementById('screen-home').classList.remove('active');
+                document.getElementById('screen-game').classList.add('active');
+                document.getElementById('screen-game').style.display = 'flex';
+
+                this.startTimer();
+                this.nextLevel();
+                
+                window.addEventListener('dblclick', (e) => this.handleRotate(e));
+                
+                // Mouse
+                this.refs.piece.addEventListener('mousedown', (e) => this.startDrag(e.clientX, e.clientY));
+                window.addEventListener('mousemove', (e) => this.onDrag(e.clientX, e.clientY));
+                window.addEventListener('mouseup', () => this.endDrag());
+
+                // Touch
+                this.refs.piece.addEventListener('touchstart', (e) => {
+                    e.preventDefault();
+                    this.startDrag(e.touches[0].clientX, e.touches[0].clientY);
+                }, {passive: false});
+                
+                window.addEventListener('touchmove', (e) => {
+                    if(this.state.piece.isDragging) {
+                         e.preventDefault();
+                         this.onDrag(e.touches[0].clientX, e.touches[0].clientY);
+                    }
+                }, {passive: false});
+                
+                window.addEventListener('touchend', () => this.endDrag());
+
+                this.loop();
+            },
+
+            startTimer() {
+                if(this.state.timerId) clearInterval(this.state.timerId);
+                this.state.timerId = setInterval(() => {
+                    this.state.time--;
+                    const m = Math.floor(this.state.time / 60).toString().padStart(2,'0');
+                    const s = (this.state.time % 60).toString().padStart(2,'0');
+                    document.getElementById('timer-chip').innerText = `${m}:${s}`;
+                    if(this.state.time <= 0) this.endGame();
+                }, 1000);
+            },
+
+            endGame() {
+                this.state.isPlaying = false;
+                clearInterval(this.state.timerId);
+                cancelAnimationFrame(this.state.loopId);
+                document.getElementById('screen-game').style.display = 'none';
+                document.getElementById('screen-result').style.display = 'flex';
+                document.getElementById('final-score').innerText = this.state.score;
+            },
+
+            updateDifficulty() {
+                const s = this.state.score;
+                this.refs.diffChip.className = "chip";
+                if (s < 4) {
+                    this.state.difficulty = 'Easy';
+                    this.state.speed = 1.0;
+                    this.refs.diffChip.innerText = "Level: Easy";
+                    this.refs.diffChip.classList.add('diff-easy');
+                } else if (s < 9) {
+                    this.state.difficulty = 'Medium';
+                    this.state.speed = 1.8;
+                    this.refs.diffChip.innerText = "Level: Medium";
+                    this.refs.diffChip.classList.add('diff-med');
+                } else {
+                    this.state.difficulty = 'Hard';
+                    this.state.speed = 2.8;
+                    this.refs.diffChip.innerText = "Level: Hard";
+                    this.refs.diffChip.classList.add('diff-hard');
+                }
+            },
+
+            nextLevel() {
+                this.updateDifficulty();
+                let newGrid = Array(3).fill().map(() => Array(3).fill(1));
+                let template = this.shapes[Math.floor(Math.random() * this.shapes.length)];
+                let hole = template;
+                let rots = Math.floor(Math.random()*4);
+                for(let i=0; i<rots; i++) hole = this.rotateMatrix(hole);
+
+                let valid = false;
+                let sx, sy;
+                let attempts = 0;
+                while(!valid && attempts < 100) {
+                    sx = Math.floor(Math.random() * (3 - hole[0].length + 1));
+                    sy = Math.floor(Math.random() * (3 - hole.length + 1));
+                    if(!isNaN(sx)) valid = true;
+                    attempts++;
+                }
+                if(!valid) { sx=0; sy=0; }
+
+                for(let r=0; r<hole.length; r++) {
+                    for(let c=0; c<hole[0].length; c++) {
+                        if(hole[r][c] === 1) newGrid[sy+r][sx+c] = 2;
+                    }
+                }
+                this.state.grid = newGrid;
+                this.state.piece.shape = hole;
+                
+                if (this.state.difficulty !== 'Easy') {
+                    let randomRots = Math.floor(Math.random() * 3) + 1;
+                    for(let i=0; i<randomRots; i++) {
+                        this.state.piece.shape = this.rotateMatrix(this.state.piece.shape);
+                    }
+                }
+
+                const boardRect = this.refs.board.getBoundingClientRect();
+                let spawnX = boardRect.left - 250;
+                if(spawnX < 20) spawnX = 20;
+
+                this.state.piece.x = spawnX;
+                this.state.piece.y = -250;
+                this.state.piece.isDragging = false;
+                this.renderGrid();
+                this.renderPiece();
+            },
+
+            renderGrid() {
+                this.refs.grid.innerHTML = '';
+                this.state.grid.forEach((row, r) => {
+                    row.forEach((val, c) => {
+                        let div = document.createElement('div');
+                        div.className = 'cell';
+                        if(val === 1) div.classList.add('filled');
+                        if(val === 2) div.classList.add('target');
+                        div.dataset.r = r;
+                        div.dataset.c = c;
+                        this.refs.grid.appendChild(div);
+                    });
+                });
+            },
+
+            renderPiece() {
+                const shape = this.state.piece.shape;
+                const h = shape.length;
+                const w = shape[0].length;
+                this.refs.piece.style.gridTemplateRows = `repeat(${h}, 80px)`;
+                this.refs.piece.style.gridTemplateColumns = `repeat(${w}, 80px)`;
+                this.refs.piece.innerHTML = '';
+                shape.forEach((row, r) => {
+                    row.forEach((val, c) => {
+                        let div = document.createElement('div');
+                        div.className = val === 1 ? 'p-block' : 'p-block empty';
+                        this.refs.piece.appendChild(div);
+                    });
+                });
+                this.updatePiecePos();
+            },
+
+            updatePiecePos() {
+                this.refs.piece.style.transform = `translate(${this.state.piece.x}px, ${this.state.piece.y}px)`;
+            },
+
+            loop() {
+                if(!this.state.isPlaying) return;
+                if(!this.state.piece.isDragging) {
+                    this.state.piece.y += this.state.speed;
+                    if(this.state.piece.y > window.innerHeight) {
+                        this.nextLevel();
+                    }
+                    this.updatePiecePos();
+                }
+                this.state.loopId = requestAnimationFrame(() => this.loop());
+            },
+
+            handleRotate(e) {
+                if(!this.state.isPlaying) return;
+                this.state.piece.shape = this.rotateMatrix(this.state.piece.shape);
+                this.renderPiece();
+            },
+
+            startDrag(cx, cy) {
+                if(!this.state.isPlaying) return;
+                this.state.piece.isDragging = true;
+                this.state.piece.dragOffset.x = cx - this.state.piece.x;
+                this.state.piece.dragOffset.y = cy - this.state.piece.y;
+            },
+
+            onDrag(cx, cy) {
+                if(!this.state.piece.isDragging) return;
+                this.state.piece.x = cx - this.state.piece.dragOffset.x;
+                this.state.piece.y = cy - this.state.piece.dragOffset.y;
+                this.updatePiecePos();
+                this.checkHover();
+            },
+
+            endDrag() {
+                if(!this.state.piece.isDragging) return;
+                this.state.piece.isDragging = false; 
+                if(this.attemptDrop()) {
+                    this.state.score++;
+                    document.getElementById('score-chip').innerText = `Score: ${this.state.score}`;
+                    this.refs.piece.style.opacity = '0';
+                    this.refs.piece.style.transform += ' scale(0.9)';
+                    setTimeout(() => {
+                        this.refs.piece.style.opacity = '1';
+                        this.nextLevel();
+                    }, 200);
+                }
+            },
+
+            rotateMatrix(matrix) {
+                return matrix[0].map((val, index) => matrix.map(row => row[index]).reverse());
+            },
+
+            // Helper to check validity of a specific grid offset
+            checkPlacementAt(offR, offC) {
+                const shape = this.state.piece.shape;
+                const h = shape.length;
+                const w = shape[0].length;
+                let filledTargets = 0;
+                let totalTargets = 0;
+                
+                // Count targets in current grid
+                this.state.grid.forEach(r => r.forEach(v => { if(v===2) totalTargets++ }));
+
+                for(let r=0; r<h; r++) {
+                    for(let c=0; c<w; c++) {
+                        if(shape[r][c] === 1) {
+                            const gr = offR + r;
+                            const gc = offC + c;
+                            // Check bounds
+                            if(gr < 0 || gr >= 3 || gc < 0 || gc >= 3) return false;
+                            // Check target
+                            if(this.state.grid[gr][gc] !== 2) return false;
+                            filledTargets++;
+                        }
+                    }
+                }
+                return filledTargets === totalTargets;
+            },
+
+            getGridCoords(x, y) {
+                const rect = this.refs.grid.getBoundingClientRect();
+                // Extended bounds check (allow falling piece to be slightly outside)
+                const margin = 30; 
+                if(x < rect.left - margin || x > rect.right + margin || 
+                   y < rect.top - margin || y > rect.bottom + margin) return null;
+                
+                const c = Math.floor((x - rect.left) / this.config.cellSize);
+                const r = Math.floor((y - rect.top) / this.config.cellSize);
+                return {r, c};
+            },
+
+            attemptDrop() {
+                const pieceRect = this.refs.piece.getBoundingClientRect();
+                const cx = pieceRect.left + pieceRect.width/2;
+                const cy = pieceRect.top + pieceRect.height/2;
+                
+                const gridPos = this.getGridCoords(cx, cy);
+                if(!gridPos) return false;
+
+                const shape = this.state.piece.shape;
+                const h = shape.length;
+                const w = shape[0].length;
+                
+                // --- FUZZY DROP LOGIC ---
+                // Calculate "Perfect" offset
+                const baseOffR = gridPos.r - Math.floor(h/2);
+                const baseOffC = gridPos.c - Math.floor(w/2);
+
+                // Check exact spot
+                if (this.checkPlacementAt(baseOffR, baseOffC)) return true;
+
+                // Check Neighbors (Tolerance)
+                // If user dropped slightly off, check 1 cell in all directions
+                const neighbors = [
+                    {r:0, c:1}, {r:0, c:-1}, {r:1, c:0}, {r:-1, c:0}
+                ];
+                
+                for(let n of neighbors) {
+                    if (this.checkPlacementAt(baseOffR + n.r, baseOffC + n.c)) return true;
+                }
+
+                return false;
+            },
+
+            checkHover() {
+                document.querySelectorAll('.cell.highlight').forEach(el => el.classList.remove('highlight'));
+                const pieceRect = this.refs.piece.getBoundingClientRect();
+                const cx = pieceRect.left + pieceRect.width/2;
+                const cy = pieceRect.top + pieceRect.height/2;
+                const gridPos = this.getGridCoords(cx, cy);
+                
+                if(gridPos) {
+                     // Simple hover highlight (center only)
+                     const cell = this.refs.grid.querySelector(`.cell[data-r="${gridPos.r}"][data-c="${gridPos.c}"]`);
+                     if(cell) cell.classList.add('highlight');
+                }
+            }
+        };
+    </script>
+</body>
+</html>
