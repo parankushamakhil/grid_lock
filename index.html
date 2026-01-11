@@ -3,25 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Cognify Grid Lock (Fixed Hitbox)</title>
+    <title>Cognify Grid Lock (Stable)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <style>
-        /* --- 1. CORE & RESET --- */
+        /* --- CORE & RESET --- */
         :root {
             --primary: #0ea5e9;
             --bg-body: #f1f5f9;
             --text-main: #1e293b;
             --text-muted: #64748b;
-            
-            /* Game Board Colors */
-            --game-container-bg: #115e59; /* Dark Teal */
+            --game-container-bg: #115e59;
             --grid-slot-bg: rgba(0,0,0,0.3);
-            --block-color: #60a5fa; /* Light Blue */
-            --block-user: #d946ef; /* Magenta */
+            --block-color: #60a5fa;
+            --block-user: #d946ef;
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Outfit', sans-serif; user-select: none; -webkit-user-select: none; }
@@ -36,12 +34,11 @@
             touch-action: none;
         }
 
-        /* --- 2. HEADER --- */
+        /* --- HEADER --- */
         .header {
             display: flex; justify-content: space-between; align-items: center;
             padding: 16px 40px; background: #fff; border-bottom: 1px solid #e2e8f0; z-index: 100;
         }
-
         .brand-area { display: flex; align-items: center; gap: 16px; }
         .logo-box {
             width: 35px; height: 35px; background: var(--primary); color: white;
@@ -49,7 +46,6 @@
             font-weight: 700; font-size: 20px;
         }
         .brand-text { font-weight: 700; color: var(--text-main); font-size: 18px; }
-        
         .context-chips { display: flex; gap: 12px; align-items: center; }
         .chip {
             background: #f1f5f9; color: var(--primary); padding: 8px 16px;
@@ -57,12 +53,11 @@
             display: flex; align-items: center; gap: 8px;
         }
 
-        /* --- 3. MAIN LAYOUT --- */
+        /* --- LAYOUT --- */
         .main-content {
             flex: 1; position: relative; display: flex;
             justify-content: center; align-items: center; width: 100%;
         }
-
         .screen { display: none; width: 100%; height: 100%; flex-direction: column; align-items: center; justify-content: center; }
         .screen.active { display: flex; }
 
@@ -78,7 +73,7 @@
         }
         .primary-btn:hover { transform: scale(1.05); }
 
-        /* --- 4. GAME BOARD --- */
+        /* --- GAME BOARD --- */
         .game-board {
             width: 500px; height: 500px;
             background: var(--game-container-bg);
@@ -99,7 +94,6 @@
             width: 80px; height: 80px;
             background: var(--grid-slot-bg); border-radius: 4px;
         }
-
         .cell.filled { background: var(--block-color); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.2); }
         .cell.target {
             background: rgba(0,0,0,0.5); box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
@@ -107,7 +101,7 @@
         }
         .cell.highlight { background: rgba(255, 255, 255, 0.2); }
 
-        /* --- 5. FALLING PIECE --- */
+        /* --- FALLING PIECE --- */
         .piece-wrapper {
             position: absolute; 
             top: 0; left: 0; 
@@ -156,7 +150,6 @@
     </header>
 
     <main class="main-content" id="main-area">
-        
         <div id="screen-home" class="screen active">
             <div class="card">
                 <h1>Grid Lock Assessment</h1>
@@ -194,7 +187,6 @@
             config: {
                 duration: 360,
                 gridSize: 3,
-                baseSpeed: 0.8, 
                 cellSize: 84 // 80px block + 4px gap logic
             },
             state: {
@@ -276,6 +268,12 @@
                 document.getElementById('screen-game').style.display = 'none';
                 document.getElementById('screen-result').style.display = 'flex';
                 document.getElementById('final-score').innerText = this.state.score;
+                
+                let rating = "Beginner";
+                if(this.state.score > 5) rating = "Intermediate";
+                if(this.state.score > 12) rating = "Advanced";
+                if(this.state.score > 20) rating = "Expert";
+                document.getElementById('final-rating').innerText = `Performance Level: ${rating}`;
             },
 
             updateDifficulty() {
@@ -401,6 +399,13 @@
             startDrag(cx, cy) {
                 if(!this.state.isPlaying) return;
                 this.state.piece.isDragging = true;
+                
+                // Get accurate initial position
+                // Fix: Use DOMMatrix for standard compliance
+                const style = window.getComputedStyle(this.refs.piece);
+                const matrix = new DOMMatrix(style.transform);
+                
+                // We don't rely on matrix for state, but for smooth pickup we need offset
                 this.state.piece.dragOffset.x = cx - this.state.piece.x;
                 this.state.piece.dragOffset.y = cy - this.state.piece.y;
             },
@@ -423,6 +428,7 @@
                     this.refs.piece.style.transform += ' scale(0.9)';
                     setTimeout(() => {
                         this.refs.piece.style.opacity = '1';
+                        this.refs.piece.style.transform = this.refs.piece.style.transform.replace(' scale(0.9)', '');
                         this.nextLevel();
                     }, 200);
                 }
@@ -432,7 +438,6 @@
                 return matrix[0].map((val, index) => matrix.map(row => row[index]).reverse());
             },
 
-            // Helper to check validity of a specific grid offset
             checkPlacementAt(offR, offC) {
                 const shape = this.state.piece.shape;
                 const h = shape.length;
@@ -440,7 +445,6 @@
                 let filledTargets = 0;
                 let totalTargets = 0;
                 
-                // Count targets in current grid
                 this.state.grid.forEach(r => r.forEach(v => { if(v===2) totalTargets++ }));
 
                 for(let r=0; r<h; r++) {
@@ -448,9 +452,7 @@
                         if(shape[r][c] === 1) {
                             const gr = offR + r;
                             const gc = offC + c;
-                            // Check bounds
                             if(gr < 0 || gr >= 3 || gc < 0 || gc >= 3) return false;
-                            // Check target
                             if(this.state.grid[gr][gc] !== 2) return false;
                             filledTargets++;
                         }
@@ -461,7 +463,6 @@
 
             getGridCoords(x, y) {
                 const rect = this.refs.grid.getBoundingClientRect();
-                // Extended bounds check (allow falling piece to be slightly outside)
                 const margin = 30; 
                 if(x < rect.left - margin || x > rect.right + margin || 
                    y < rect.top - margin || y > rect.bottom + margin) return null;
@@ -483,16 +484,11 @@
                 const h = shape.length;
                 const w = shape[0].length;
                 
-                // --- FUZZY DROP LOGIC ---
-                // Calculate "Perfect" offset
                 const baseOffR = gridPos.r - Math.floor(h/2);
                 const baseOffC = gridPos.c - Math.floor(w/2);
 
-                // Check exact spot
                 if (this.checkPlacementAt(baseOffR, baseOffC)) return true;
 
-                // Check Neighbors (Tolerance)
-                // If user dropped slightly off, check 1 cell in all directions
                 const neighbors = [
                     {r:0, c:1}, {r:0, c:-1}, {r:1, c:0}, {r:-1, c:0}
                 ];
@@ -512,7 +508,6 @@
                 const gridPos = this.getGridCoords(cx, cy);
                 
                 if(gridPos) {
-                     // Simple hover highlight (center only)
                      const cell = this.refs.grid.querySelector(`.cell[data-r="${gridPos.r}"][data-c="${gridPos.c}"]`);
                      if(cell) cell.classList.add('highlight');
                 }
